@@ -1,0 +1,440 @@
+Description: Esta plantilla despliega un VPC, con dos subredes publicas,privadas
+  y de base de datos repartidas a traves de dos zonas de disponibilidad.
+  Despliega un internet gateway en las subredes publicas. Despliega NAT gateways
+  (una en cada AZ), y las rutas por defecto para ellos en las subredes privadas.
+
+Parameters:
+  EnvironmentName:
+    Description: Nombre de entorno que se antepone a los nombres de los recursos
+    Type: String
+    AllowedValues:
+      - dev
+      - qa
+      - prd
+
+  VpcCIDR:
+    Description: Por favor, ingresar el rango de IP (CIDR) para este VPC
+    Type: String
+    Default: 10.250.0.0/16
+
+  PublicSubnet1CIDR:
+    Description: Por favor, ingresar el rango de IP (CIDR) para la public subnet en la primera AZ
+    Type: String
+    Default: 10.250.0.0/24
+
+  PublicSubnet2CIDR:
+    Description: Por favor, ingresar el rango de IP (CIDR) para la public subnet en la segunda AZ
+    Type: String
+    Default: 10.250.1.0/24
+
+  PrivateSubnet1CIDR:
+    Description: Por favor, ingresar el rango de IP (CIDR) para la private subnet en la primera AZ
+    Type: String
+    Default: 10.250.2.0/24
+
+  PrivateSubnet2CIDR:
+    Description: Por favor, ingresar el rango de IP (CIDR) para la private subnet en la segunda AZ
+    Type: String
+    Default: 10.250.3.0/24
+
+  DatabaseSubnet1CIDR:
+    Description: Por favor, ingresar el rango de IP (CIDR) para la data base subnet en la primera AZ
+    Type: String
+    Default: 10.250.4.0/24
+
+  DatabaseSubnet2CIDR:
+    Description: Por favor, ingresar el rango de IP (CIDR) para la data base subnet en la segunda AZ
+    Type: String
+    Default: 10.250.5.0/24
+
+  KeyPair:
+    Description: Escoger Key Pair
+    Type: AWS::EC2::KeyPair::KeyName
+
+Conditions:
+  CreatePrdResources: !Equals [ !Ref EnvironmentName, prd]
+  CreateNoPrdResources: 
+    Fn::Or:
+    - !Equals [ !Ref EnvironmentName, dev]
+    - !Equals [ !Ref EnvironmentName, qa]
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub VPC ${EnvironmentName}
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub IG ${EnvironmentName}
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: SN PUB 01
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: SN PUB 02
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: SN PRI 01
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: SN PRI 02
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  DatabaseSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref DatabaseSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: SN DB 01
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  DatabaseSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref DatabaseSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: SN DB 02
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: EIP NATGW 01
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    Condition: CreatePrdResources
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: EIP NATGW 02
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: NATGW 01
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Condition: CreatePrdResources
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: NATGW 02
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: RT PUB
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: RT PRI 01
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+  
+  PrivateSubnet1RouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateNoPrdResources
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet2
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Condition: CreatePrdResources
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: RT PRI 02
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  DefaultPrivateRoute2:
+    Type: AWS::EC2::Route
+    Condition: CreatePrdResources
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreatePrdResources
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+  DatabaseRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: RT DB 01
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  DefaultDatabaseRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  Database1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable1
+      SubnetId: !Ref DatabaseSubnet1
+
+  Database1RouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateNoPrdResources
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable1
+      SubnetId: !Ref DatabaseSubnet2
+
+  DatabaseRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Condition: CreatePrdResources
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: RT DB 02
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  DefaultDatabaseRoute2:
+    Type: AWS::EC2::Route
+    Condition: CreatePrdResources
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  Database2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreatePrdResources
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable2
+      SubnetId: !Ref DatabaseSubnet2
+
+  EC2InstanceWinPub: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: "ami-09d496c26aa745869"
+      InstanceType: "t2.micro"
+      KeyName: !Ref KeyPair
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          GroupSet: 
+            - !Ref SecurityGroupWinPublico
+          SubnetId: 
+            !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ec2.${EnvironmentName}.win.pub
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}  
+
+  SecurityGroupWinPublico:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub sg.${EnvironmentName}.win.pub
+      GroupDescription: !Sub sg.${EnvironmentName}.win.pub
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub sg.${EnvironmentName}.win.pub"
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+
+  EC2InstanceWinNoPub: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: "ami-09d496c26aa745869"
+      InstanceType: "t2.micro"
+      KeyName: !Ref KeyPair
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          GroupSet: 
+            - !Ref SecurityGroupWinNoPublico
+          SubnetId: 
+            !Ref PrivateSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ec2.${EnvironmentName}.win.nopub
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}  
+
+  SecurityGroupWinNoPublico:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub sg.${EnvironmentName}.win.nopub
+      GroupDescription: !Sub sg.${EnvironmentName}.win.pub
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          SourceSecurityGroupId: !Ref SecurityGroupWinPublico
+      Tags:
+        - Key: Name
+          Value: !Sub sg.${EnvironmentName}.win.nopub"
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+  
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Configuracion de Networking"
+        Parameters:
+          - EnvironmentName
+          - VpcCIDR
+          - PublicSubnet1CIDR
+          - PublicSubnet2CIDR
+          - PrivateSubnet1CIDR
+          - PrivateSubnet2CIDR
+          - DatabaseSubnet1CIDR
+          - DatabaseSubnet2CIDR
